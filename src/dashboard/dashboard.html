@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RuTranscribe WebGPU - Live Audio Studio & Test Lab</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="studio-layout">
+    
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="badge-icon">RU➔EN</div>
+        <div>
+          <h2>RuTranscribe</h2>
+          <span class="sub">WebGPU Studio & Lab</span>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>⚡ Acceleration</h3>
+        <div class="info-card">
+          <div class="info-row">
+            <span>Device:</span>
+            <strong id="deviceBadge">WebGPU</strong>
+          </div>
+          <div class="info-row">
+            <span>Adapter:</span>
+            <span id="adapterName" class="truncate">Checking...</span>
+          </div>
+          <div class="info-row">
+            <span>Model:</span>
+            <span>whisper-base (~80MB)</span>
+          </div>
+          <div class="info-row">
+            <span>Task:</span>
+            <span>translate (RU ➔ EN)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>🎙️ Audio Input Mode</h3>
+        <div class="btn-group">
+          <button id="btnMicMode" class="mode-btn active">Live Microphone</button>
+          <button id="btnFileMode" class="mode-btn">Audio / Video File</button>
+        </div>
+      </div>
+
+      <div class="panel-section file-drop-section hidden" id="fileDropSection">
+        <h3>📁 Audio File Upload</h3>
+        <div id="dropZone" class="drop-zone">
+          <span>Drop Russian Audio/Video here</span>
+          <span class="drop-sub">(MP3, WAV, WEBM, MP4)</span>
+          <input type="file" id="fileInput" accept="audio/*,video/*" class="file-input">
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>📊 Export Subtitles</h3>
+        <div class="btn-group">
+          <button id="btnExportSRT" class="btn-outline">Download .SRT</button>
+          <button id="btnExportTXT" class="btn-outline">Copy Text</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      
+      <section class="visualizer-container">
+        <div class="visualizer-header">
+          <div class="live-status">
+            <span class="status-indicator" id="liveDot"></span>
+            <span id="liveStatusText">Microphone Idle</span>
+          </div>
+          <div class="controls-bar">
+            <button id="btnToggleMic" class="btn-action start">
+              <span>🎙️ Start Microphone</span>
+            </button>
+            <button id="btnClear" class="btn-action">
+              <span>🗑️ Clear History</span>
+            </button>
+          </div>
+        </div>
+
+        <canvas id="audioVisualizer" class="canvas-visualizer"></canvas>
+      </section>
+
+      <section class="caption-stage">
+        <div class="stage-label">LIVE SUBTITLE STAGE (PREVIEW)</div>
+        <div class="stage-box" id="stageBox">
+          <div class="stage-secondary" id="stageSecondary">Здесь появится оригинальный русский текст...</div>
+          <div class="stage-primary" id="stagePrimary">Speak Russian into your mic or play a video — English subtitles will appear here in real-time.</div>
+        </div>
+      </section>
+
+      <section class="transcript-stream-container">
+        <div class="stream-header">
+          <h3>📜 Live Translation Feed</h3>
+          <span id="entryCount" class="counter">0 segments</span>
+        </div>
+        <div class="transcript-feed" id="transcriptFeed">
+          <div class="empty-placeholder">
+            <span>No translations recorded yet. Click "Start Microphone" or drop an audio file above to test the WebGPU model!</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>
