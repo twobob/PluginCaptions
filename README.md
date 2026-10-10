@@ -27,6 +27,10 @@ Firefox with WebGPU enabled:
 - **Pinned controls**: Use the top-right in-page HUD to toggle captions on/off, change size, or enable dual subtitles (Russian + English).
 - **Studio**: Open `dashboard.html` from the toolbar icon to test microphone input or translate local audio files.
 
+## Building
+
+For architecture and build details, see [BUILDING.md](BUILDING.md).
+
 ## Licence
 
 MIT
