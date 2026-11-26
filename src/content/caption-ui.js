@@ -219,7 +219,9 @@ export class CaptionUI {
     this.container.appendChild(this.primaryTextEl);
     this.shadowRoot.appendChild(style);
     this.shadowRoot.appendChild(this.container);
-    document.documentElement.appendChild(this.hostElement);
+    // The overlay is created on demand, possibly while the page is already
+    // fullscreen, where only descendants of the fullscreen element are shown.
+    (document.fullscreenElement || document.documentElement).appendChild(this.hostElement);
     this.setupDragHandler();
     this.applySettings(this.settings);
   }

@@ -1,12 +1,19 @@
 {
   "name": "rutranscribe-webgpu",
   "version": "1.0.0",
+  "private": true,
   "description": "Firefox extension for real-time Russian-to-English closed captions powered by WebGPU and on-device Whisper.",
   "type": "module",
   "scripts": {
     "build": "vite build && node copy-assets.js",
     "dev": "vite",
-    "generate-icons": "node generate-icons.js"
+    "generate-icons": "node generate-icons.js",
+    "test": "node --test",
+    "test:firefox": "node scripts/firefox-smoke.mjs",
+    "fixtures": "node scripts/make-fixture.mjs",
+    "try": "node scripts/firefox-try.mjs",
+    "lint": "web-ext lint --source-dir dist",
+    "package": "npm run build && web-ext build --source-dir dist --artifacts-dir web-ext-artifacts --filename rutranscribe-webgpu-{version}.xpi --overwrite-dest"
   },
   "keywords": [
     "firefox-extension",
@@ -18,8 +25,13 @@
   ],
   "author": "Antigravity Pair Programmer",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
-    "@huggingface/transformers": "^3.3.3",
-    "vite": "^6.2.0"
+    "@huggingface/transformers": "4.3.1",
+    "esbuild": "^0.25.12",
+    "vite": "^6.4.4",
+    "web-ext": "^10.8.0"
   }
 }

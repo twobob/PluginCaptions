@@ -7,6 +7,11 @@ let mediaStream = null;
 let analyser = null;
 let animFrameId = null;
 let transcriptSegments = [];
+// Subtitle timeline in seconds. Each capture session (a microphone run or a
+// file) continues where the previous one ended, so exported cues never overlap.
+let timelineEnd = 0;
+let sessionBase = 0;
+let micStartedAt = 0;
 const deviceBadge = document.getElementById("deviceBadge");
 const adapterName = document.getElementById("adapterName");
 const btnMicMode = document.getElementById("btnMicMode");
@@ -72,6 +77,9 @@ function setupEvents() {
   });
   btnClear.addEventListener("click", () => {
     transcriptSegments = [];
+    timelineEnd = 0;
+    sessionBase = 0;
+    micStartedAt = performance.now();
     renderFeed();
     stagePrimary.textContent = "Speak Russian into your mic or play a video \u2014 English subtitles will appear here in real-time.";
     stageSecondary.textContent = "\u0417\u0434\u0435\u0441\u044C \u043F\u043E\u044F\u0432\u0438\u0442\u0441\u044F \u043E\u0440\u0438\u0433\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0439 \u0440\u0443\u0441\u0441\u043A\u0438\u0439 \u0442\u0435\u043A\u0441\u0442...";
@@ -136,7 +144,9 @@ async function startMicrophone() {
           if (now - lastSpeechTime > 450 || speechBuffer.length >= targetSampleRate * 3.5) {
             if (speechBuffer.length > targetSampleRate * 0.4) {
               const chunk = new Float32Array(speechBuffer);
-              sendAudioChunk(chunk);
+              const endSec = (now - micStartedAt) / 1e3;
+              const startSec = Math.max(0, endSec - chunk.length / targetSampleRate);
+              sendAudioChunk(chunk, { startSec: sessionBase + startSec, endSec: sessionBase + endSec });
             }
             speechBuffer = [];
             isSpeaking = false;
@@ -147,8 +157,10 @@ async function startMicrophone() {
     sourceNode.connect(processor);
     processor.connect(audioContext.destination);
     isMicActive = true;
+    sessionBase = timelineEnd;
+    micStartedAt = performance.now();
     btnToggleMic.className = "btn-action start recording";
-    btnToggleMic.innerHTML = "<span>\u23F9 Stop Microphone</span>";
+    setButtonLabel(btnToggleMic, "Stop Microphone");
     liveDot.className = "status-indicator active";
     liveStatusText.textContent = "Listening to Microphone...";
     startVisualizerLoop();
@@ -156,6 +168,11 @@ async function startMicrophone() {
     alert(`Could not start microphone: ${err.message}`);
     console.error(err);
   }
+}
+function setButtonLabel(button, label) {
+  const span = document.createElement("span");
+  span.textContent = label;
+  button.replaceChildren(span);
 }
 function stopMicrophone() {
   if (mediaStream) {
@@ -168,13 +185,13 @@ function stopMicrophone() {
   }
   isMicActive = false;
   btnToggleMic.className = "btn-action start";
-  btnToggleMic.innerHTML = "<span>\u{1F399}\uFE0F Start Microphone</span>";
+  setButtonLabel(btnToggleMic, "Start Microphone");
   liveDot.className = "status-indicator";
   liveStatusText.textContent = "Microphone Idle";
   if (animFrameId) cancelAnimationFrame(animFrameId);
   drawIdleVisualizer();
 }
-async function sendAudioChunk(float32Chunk) {
+async function sendAudioChunk(float32Chunk, timing) {
   liveStatusText.textContent = "WebGPU Translating Russian \u2794 English...";
   try {
     const response = await webExt.runtime.sendMessage({
@@ -182,7 +199,7 @@ async function sendAudioChunk(float32Chunk) {
       audio: Array.from(float32Chunk)
     });
     if (response && response.success && response.result && response.result.text) {
-      handleNewTranslation(response.result);
+      handleNewTranslation(response.result, timing);
     }
   } catch (err) {
     console.warn("[Dashboard] Inference dispatch error:", err);
@@ -192,7 +209,7 @@ async function sendAudioChunk(float32Chunk) {
     }
   }
 }
-function handleNewTranslation(result) {
+function handleNewTranslation(result, timing) {
   stagePrimary.textContent = result.text;
   if (result.russianText) {
     stageSecondary.textContent = result.russianText;
@@ -205,8 +222,11 @@ function handleNewTranslation(result) {
     enText: result.text,
     ruText: result.russianText || "",
     latencyMs: result.latencyMs || 0,
-    device: result.device || "webgpu"
+    device: result.device || "webgpu",
+    startSec: timing ? timing.startSec : timelineEnd,
+    endSec: timing ? timing.endSec : timelineEnd + 3.5
   };
+  timelineEnd = Math.max(timelineEnd, segment.endSec);
   transcriptSegments.unshift(segment);
   renderFeed();
 }
@@ -246,14 +266,16 @@ function renderFeed() {
 async function handleAudioFile(file) {
   liveStatusText.textContent = `Decoding ${file.name}...`;
   liveDot.className = "status-indicator active";
+  let ctx = null;
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
     const raw = audioBuffer.getChannelData(0);
     const resampled = resampleTo16k(raw, audioBuffer.sampleRate, 16e3);
     liveStatusText.textContent = `Translating file with WebGPU (${Math.round(audioBuffer.duration)}s)...`;
     const chunkSize = 16e3 * 3.5;
+    sessionBase = timelineEnd;
     for (let offset = 0; offset < resampled.length; offset += chunkSize) {
       const chunk = resampled.slice(offset, Math.min(offset + chunkSize, resampled.length));
       if (chunk.length < 16e3 * 0.4) continue;
@@ -262,16 +284,21 @@ async function handleAudioFile(file) {
         audio: Array.from(chunk)
       });
       if (response && response.success && response.result && response.result.text) {
-        handleNewTranslation(response.result);
+        handleNewTranslation(response.result, {
+          startSec: sessionBase + offset / 16e3,
+          endSec: sessionBase + (offset + chunk.length) / 16e3
+        });
       }
     }
     liveStatusText.textContent = `Completed processing ${file.name}!`;
     liveDot.className = "status-indicator";
-    ctx.close();
   } catch (err) {
     alert(`Error processing audio file: ${err.message}`);
     liveStatusText.textContent = "File processing failed";
     liveDot.className = "status-indicator";
+  } finally {
+    if (ctx && ctx.state !== "closed") ctx.close().catch(() => {
+    });
   }
 }
 function resampleTo16k(inputData, inRate, outRate) {
@@ -327,8 +354,8 @@ function exportSRT() {
   let srtContent = "";
   const sorted = [...transcriptSegments].reverse();
   sorted.forEach((item, index) => {
-    const startSec = index * 3.5;
-    const endSec = (index + 1) * 3.5;
+    const startSec = Number.isFinite(item.startSec) ? item.startSec : index * 3.5;
+    const endSec = Number.isFinite(item.endSec) && item.endSec > startSec ? item.endSec : startSec + 3.5;
     srtContent += `${index + 1}
 ${formatTimeSRT(startSec)} --> ${formatTimeSRT(endSec)}
 ${item.enText}
@@ -341,13 +368,15 @@ ${item.enText}
   a.href = url;
   a.download = `Russian_to_English_Translation_${Date.now()}.srt`;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1e3);
 }
 function formatTimeSRT(seconds) {
-  const date = /* @__PURE__ */ new Date(0);
-  date.setSeconds(seconds);
-  const ms = Math.floor(seconds % 1 * 1e3);
-  return date.toISOString().substr(11, 8) + "," + String(ms).padStart(3, "0");
+  const totalMs = Math.max(0, Math.round(seconds * 1e3));
+  const pad = (value, width = 2) => String(value).padStart(width, "0");
+  const hours = Math.floor(totalMs / 36e5);
+  const minutes = Math.floor(totalMs % 36e5 / 6e4);
+  const secs = Math.floor(totalMs % 6e4 / 1e3);
+  return `${pad(hours)}:${pad(minutes)}:${pad(secs)},${pad(totalMs % 1e3, 3)}`;
 }
 function exportTXT() {
   if (transcriptSegments.length === 0) {
@@ -357,6 +386,8 @@ function exportTXT() {
   const text = transcriptSegments.slice().reverse().map((i) => i.enText).join("\n");
   navigator.clipboard.writeText(text).then(() => {
     alert("English transcript copied to clipboard!");
+  }).catch((err) => {
+    alert(`Could not copy the transcript: ${err.message}`);
   });
 }
 document.addEventListener("DOMContentLoaded", initDashboard);
